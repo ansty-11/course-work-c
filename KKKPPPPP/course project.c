@@ -5,8 +5,11 @@
 #define POROG 500
 #define WARNING_THRESHOLD 0.05 * POROG
 #define MAX_TANKS 10 // Максимальное количество резервуаров
-#define MAX_FILENAME_SIZE 20 // Максильное количество символов для названия файла
-#define MAX_RECORD_COUNT 100 // МАксимальное количество сгенерированных записей
+#define MAX_FILENAME_SIZE 20 // Максимальное количество символов для названия файла
+#define MAX_RECORD_COUNT 100 // Максимальное количество сгенерированных записей
+#define INITIAL_COUNT 0 // Начальное значение счетчика
+#define INITIAL_TOTAL 0 // Начальное значение общего уровня жидкости
+#define INITIAL_MAX_LEVEL -1 // Инициализация максимального уровня
 
 // Структура для хранения уровня жидкости и индекса резервуара
 typedef struct {
@@ -35,10 +38,8 @@ int collection_date();
 
 /*
  * Функция генерирует случайные данные уровней жидкости для резервуаров.
- * @param records Указатель на массив записей для хранения сгенерированных данных.
- * @param count Указатель на переменную для хранения количества записей.
  */
-int generate_random_data(Record** records, int* count);
+Record* generate_random_data();
 
 /*
  * Функция сортирует записи по индексам резервуаров и уровням жидкости.
@@ -46,7 +47,7 @@ int generate_random_data(Record** records, int* count);
  * @param records Массив записей для сортировки.
  * @param count Количество записей для сортировки.
  */
-int sort_records(Record* records, int count);
+Record* sort_records(Record* records, int count);
 
 /*
  * Функция записывает одну запись о уровне жидкости в файл.
@@ -57,10 +58,9 @@ int write_record_to_file(FILE* file, Record record);
 
 /*
  * Функция обрабатывает ввод данных от пользователя и сохраняет их в массив записей.
- * @param records Массив записей для сохранения введенных данных.
  * @param count Указатель на переменную для хранения количества записей.
  */
-int handle_user_input(Record* records, int* count);
+Record* handle_user_input(int* count);
 
 /*
  * Функция проверяет корректность формата ввода уровня жидкости и индекса резервуара.
@@ -120,9 +120,7 @@ int main() {
                     collection_date();
                     break;
                 case 2: { // Автоматическая генерация данных
-                    Record* records = 0;
-                    int count = 0;
-                    generate_random_data(&records, &count);
+                    Record* records = generate_random_data();
                     free(records); // Освобождение памяти после использования
                     break;
                 }
@@ -151,19 +149,21 @@ int main() {
 }
 
 int collection_date() {
+    int count = INITIAL_COUNT;
+    Record* records = handle_user_input(&count); // Обработка ввода данных от пользователя
+    data("data.txt", records, count); // Запись собранных данных в файл
+    free(records); // Освобождение памяти после использования
+
+    return 0;
+}
+
+Record* handle_user_input(int* count) {
     Record* records = malloc(sizeof(Record) * MAX_RECORD_COUNT); // Выделение памяти под массив записей
     if (!records) {
         printf("Ошибка выделения памяти.\n");
-        return;
+        return 0;
     }
 
-    int count = 0;
-    handle_user_input(records, &count); // Обработка ввода данных от пользователя
-    data("data.txt", records, count); // Запись собранных данных в файл
-    free(records); // Освобождение памяти после использования
-}
-
-int handle_user_input(Record* records, int* count) {
     while (*count < MAX_RECORD_COUNT) { // Ограничение на количество вводимых записей
         char input[MAX_RECORD_COUNT]; //Буфер для ввода данных пользователем
         printf("Введите уровень жидкости в формате '[значение] м, [индекс резервуара]' (или 'exit' для выхода): ");
@@ -184,6 +184,8 @@ int handle_user_input(Record* records, int* count) {
             printf("Ошибка формата ввода. Попробуйте еще раз.\n");
         }
     }
+
+    return records;
 }
 
 int validate_input(const char* input, Record* record) {
@@ -214,12 +216,13 @@ int check_monotonicity(Record* records, int count) {
     return 0;
 }
 
-int generate_random_data(Record** records, int* count) {
+Record* generate_random_data() {
+    int count = INITIAL_COUNT;
     srand(time(NULL)); // Инициализация генератора случайных чисел
-    *count = MAX_RECORD_COUNT; // Установка количества записей
+    count = MAX_RECORD_COUNT; // Установка количества записей
 
-    *records = malloc(sizeof(Record) * (*count));
-    if (*records == NULL) {
+    Record* records = malloc(sizeof(Record) * (count));
+    if (records == NULL) {
         printf("Ошибка выделения памяти.\n");
         return 1;
     }
@@ -229,7 +232,7 @@ int generate_random_data(Record** records, int* count) {
         previous_level[i] = rand() % (POROG + 1); // Инициализация случайных уровней
     }
 
-    for (int i = 0; i < *count; i++) {
+    for (int i = 0; i < count; i++) {
         float new_level;
         int tank_index = rand() % MAX_TANKS + 1; // Генерация индекса резервуара от 1 до MAX_TANKS
 
@@ -239,15 +242,15 @@ int generate_random_data(Record** records, int* count) {
         } while ((new_level < previous_level[tank_index - 1] - 1) ||
             (new_level > previous_level[tank_index - 1] + 1));
 
-        (*records)[i].level = new_level;
-        (*records)[i].index = tank_index;
+        (records)[i].level = new_level;
+        (records)[i].index = tank_index;
 
         // Запись данных в соответствующий файл резервуара
         char filename[MAX_FILENAME_SIZE];
         sprintf(filename, "tank_%d.txt", tank_index); // Формирование имени файла
         FILE* tank_file = fopen(filename, "a"); // Открытие файла для добавления данных
         if (tank_file != NULL) {
-            write_record_to_file(tank_file, (*records)[i]);
+            write_record_to_file(tank_file, (records)[i]);
             fclose(tank_file);
         }
         else {
@@ -257,33 +260,43 @@ int generate_random_data(Record** records, int* count) {
     }
 
     printf("Данные записаны в файлы резервуаров.\n");
-    sort_records(*records, *count); // Сортировка записей всех резервуарам
-    return 0;
+
+    Record* sorted_records = sort_records(records, count); // Сортировка записей всех резервуарам
+    data("data.txt", sorted_records, count); // Запись всех данных в общий файл
+
+    return records;
 }
 
 int write_record_to_file(FILE* file, Record record) {
     fprintf(file, "%.2f %d\n", record.level, record.index);
+
+    return 0;
 }
 
-int sort_records(Record* records, int count) {
+Record* sort_records(Record* records, int count) {
+    // Внешний цикл для перебора всех элементов массива (по индексам)
     for (int i = 0; i < count - 1; i++) {
+        // Внутренний цикл для сравнения текущего элемента с последующими
         for (int j = i + 1; j < count; j++) {
+            // Сравнение элементов: сначала по индексу, затем по уровню (если индексы равны)
             if ((records[i].index > records[j].index) ||
                 (records[i].index == records[j].index && records[i].level > records[j].level)) {
+                // Если элементы не в правильном порядке, меняем их местами
                 Record temp = records[i];
                 records[i] = records[j];
                 records[j] = temp;
             }
         }
     }
-    data("data.txt", records, count); // Запись всех данных в общий файл
+
+    return records;
 }
 
 int data(const char* filename, Record* records, int count) {
     FILE* file = fopen(filename, "a");
     if (file == 0) {
         printf("Ошибка открытия файла для записи.\n");
-        return;
+        return 0;
     }
 
     for (int i = 0; i < count; i++) {
@@ -304,7 +317,7 @@ int analyz_data() {
 
     if (tank_index < 1 || tank_index > MAX_TANKS) { // Проверка на допустимость введенного индекса резервуар
         printf("Ошибка: неверный индекс резервуара.\n");
-        return;
+        return 0;
     }
 
     char filename[MAX_FILENAME_SIZE];
@@ -313,13 +326,13 @@ int analyz_data() {
     FILE* file = fopen(filename, "r"); // Открытие файла для чтения
     if (file == 0) {
         printf("Ошибка открытия файла %s для анализа.\n", filename);
-        return;
+        return 0;
     }
 
-    float total = 0; // Переменная для хранения общего уровня
-    float max_level = -1; // Инициализация минимального уровня
-    float min_level = POROG + 1; // Инициализация максимального уровня на большее значение чем POROG
-    int count = 0; // Счетчик записей в файле
+    float total = INITIAL_TOTAL; // Переменная для хранения общего уровня
+    float max_level = INITIAL_MAX_LEVEL; // Инициализация максимального уровня
+    float min_level = POROG + 1; // Инициализация минимального уровня на большее значение чем POROG
+    int count = INITIAL_COUNT; // Счетчик записей в файле
 
     while (!feof(file)) { // Чтение данных из файла, пока не достигнут конец файла
         Record record;
@@ -347,6 +360,8 @@ int analyz_data() {
     else {
         printf("Нет записанных данных для анализа.\n");
     }
+
+    return 0;
 }
 
 int print_average_level(float total, int count) {
@@ -357,6 +372,8 @@ int print_average_level(float total, int count) {
     else {
         printf("Нет записанных данных для анализа.\n");
     }
+
+    return 0;
 }
 
 int print_max_min_levels(float max, float min) {
@@ -367,4 +384,6 @@ int print_max_min_levels(float max, float min) {
     else {
         printf("Нет записанных данных для анализа.\n");
     }
+
+    return 0;
 }
